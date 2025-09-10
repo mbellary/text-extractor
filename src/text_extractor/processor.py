@@ -162,7 +162,7 @@ class JSONLBatchWriter:
 
         def flush(self):
             """Write buffer to jsonl and upload to S3."""
-            if not self.buffer["doc_id"]:
+            if not self.buffer["custom_id"]:
                 return
             table = pa.Table.from_pydict({
                 "custom_id": self.buffer["custom_id"],
@@ -176,6 +176,7 @@ class JSONLBatchWriter:
             key = f"{self.prefix}/{uuid.uuid4()}.jsonl"
             self.s3.upload_fileobj(buf, self.bucket, key)
             self.parts.append(key)
+            logger.info(f"Successfully uploaded key {key} to S3")
 
             # add item to dynamodb
             try:
@@ -190,15 +191,15 @@ class JSONLBatchWriter:
                         },
                         ConditionExpression="attribute_not_exists(s3_key)"
                     )
-                print(f'Successfully updated key {key} to dynamo db.')
+                logger.info(f'Successfully updated key {key} to dynamo db.')
             except Exception as ddb_e:
-                logger.warning(f"f'Failed to update key {key} to dynamo db: {ddb_e}'")
+                logger.warning(f'Failed to update key {key} to dynamo db: {ddb_e}')
 
             # publish to SQS
             try:
                 response= self.sqs.send_message(
                             QueueUrl=JSONL_SQS_URL,
-                            MessageBody={'s3_key': key}
+                            MessageBody=json.dumps({'s3_key': key})
                         )
                 logger.info(f"Successfully enqueued S3 key {key} to SQS. Message ID: {response['MessageId']}")
             except Exception as sqs_e:
@@ -256,6 +257,7 @@ async def process_parquet_file(s3_bucket_uri, s3_key, ddb_client, writer_json):
                     # DynamoDB per-page increment (atomic)
                     try:
                         await _increment_pages_processed(ddb_client, s3_key, row_number)
+                        logger.info("DynamoDB pages increment succeeded for %s page %s", s3_key, row_number)
                     except Exception as e:
                         logger.warning("DynamoDB pages increment failed for %s page %s: %s", s3_key, row_number, e)
 
@@ -288,7 +290,7 @@ async def process_parquet_file(s3_bucket_uri, s3_key, ddb_client, writer_json):
             logger.exception("Also failed to mark failure in DynamoDB: %s", ex)
         raise
 
-async def process_jsonl_file(s3_bucket_uri, s3_key, ddb_client, sqs_client, dlq_url, s3_client):
+async def process_jsonl_file(s3_bucket_uri, s3_key, s3_client, sqs_client, ddb_client, dlq_url, writer_json ):
     '''
     # check if the s3_key is in dynamoDB
     # if it is not
@@ -407,16 +409,15 @@ async def handle_jsonl_message(body: str, message_meta: dict, sqs_client, ddb_cl
     
     # SQS message contains a batch of s3_keys. defaults to 1000 keys per message.
     # s3_key value defines the parquet location on s3.
-    s3_keys = payload.get("s3_keys") or payload.get("s3_key") or payload.get("key") or payload.get("s3Uri") or payload.get("s3_uri") or body
+    s3_key = payload.get("s3_keys") or payload.get("s3_key") or payload.get("key") or payload.get("s3Uri") or payload.get("s3_uri") or body
     s3_bucket_uri = OCR_S3_BUCKET
 
     failed_keys = []
-    for s3_key in s3_keys:
-        try:
-            result = await process_jsonl_file(s3_bucket_uri, s3_key, ddb_client, writer_json)
-        except Exception as e:
-            logger.exception("Processing failed for %s: %s", s3_key, e)
-            failed_keys.append(s3_key)
+    try:
+        result = await process_jsonl_file(s3_bucket_uri, s3_key,  None, sqs_client, ddb_client, dlq_url, writer_json)
+    except Exception as e:
+        logger.exception("Processing failed for %s: %s", s3_key, e)
+        failed_keys.append(s3_key)
     
     if failed_keys:
         # explicitly publish failures to DLQ
