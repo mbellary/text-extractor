@@ -23,7 +23,7 @@ dependencies = [
 ]
 
 [project.scripts]
-text-extractor = "text_extractor.worker"
+worker = "text_extractor.worker:main"
 
 [build-system]
 requires = ["hatchling"]

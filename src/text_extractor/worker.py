@@ -213,7 +213,7 @@ async def shutdown():
         await asyncio.sleep(1)
     logger.info("shutdown complete")
 
-async def main():
+async def run():
     # start metrics server
     start_metrics_server(host=os.environ.get("METRICS_HOST", "0.0.0.0"), port=int(os.environ.get("METRICS_PORT", "8000")))
     logger.info("metrics server started", extra={"host": os.environ.get("METRICS_HOST"), "port": os.environ.get("METRICS_PORT")})
@@ -242,11 +242,21 @@ async def main():
     await asyncio.gather(*pollers, return_exceptions=True)
     logger.info("worker exiting")
 
-if __name__ == "__main__":
+
+def main():
     try:
         if sys.platform == 'win32':
             asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
 
-        asyncio.run(main())
+        asyncio.run(run())
     except KeyboardInterrupt:
         pass
+
+# if __name__ == "__main__":
+#     try:
+#         if sys.platform == 'win32':
+#             asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
+#
+#         asyncio.run(main())
+#     except KeyboardInterrupt:
+#         pass
