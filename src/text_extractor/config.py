@@ -30,12 +30,12 @@ OCR_S3_BUCKET=_env("OCR_S3_BUCKET", "ocr-bucket")
 OCR_S3_JSONL_PART_KEY=_env("OCR_S3_JSONL_PART_KEY", "jsonl")
 
 # SQS URLs
-PARQUET_SQS_URL = _env("PARQUET_SQS_URL")  # parquet messages
-JSONL_SQS_URL = _env("JSONL_SQS_URL")  # jsonl messages
+PDF_OCR_PARQUET_SQS_URL = _env("PDF_OCR_PARQUET_SQS_URL")  # parquet messages
+OCR_JSONL_SQS_URL = _env("OCR_JSONL_SQS_URL")  # jsonl messages
 
 # Optional manual DLQ urls (if you want worker to forward)
-PARQUET_SQS_DLQ_URL: Optional[str] = _env("PARQUET_SQS_DLQ_URL")
-JSONL_SQS_DLQ_URL: Optional[str] = _env("JSONL_SQS_DLQ_URL")
+PDF_OCR_PARQUET_DLQ_URL: Optional[str] = _env("PDF_OCR_PARQUET_DLQ_URL")
+OCR_JSONL_DLQ_URL: Optional[str] = _env("OCR_JSONL_DLQ_URL")
 
 # Dynamo DB table
 # tracks status of PDF files processed by pdf processor module

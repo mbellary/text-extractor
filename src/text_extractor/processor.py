@@ -14,7 +14,7 @@ import pyarrow.parquet as pq
 import aioboto3
 
 from text_extractor.config import PROCESS_POOL_WORKERS, THREAD_POOL_WORKERS, PDF_S3_BUCKET, JSONL_MAX_CHUNK_SIZE_MB, \
-    JSONL_MAX_NUM_PAGES, OCR_S3_BUCKET, JSONL_SQS_URL, OCR_JSONL_STATE, OCR_PARQUET_STATE, AWS_REGION, \
+    JSONL_MAX_NUM_PAGES, OCR_S3_BUCKET, OCR_JSONL_SQS_URL, OCR_JSONL_STATE, OCR_PARQUET_STATE, AWS_REGION, \
     TEST_AWS_DDB_ACCESS_KEY_ID, TEST_AWS_DDB_SECRET_ACCESS_KEY_ID, TEST_ENDPOINT_URL
 from text_extractor.logger import get_logger
 # from text_extractor.worker import forward_to_dlq
@@ -198,7 +198,7 @@ class JSONLBatchWriter:
             # publish to SQS
             try:
                 response= self.sqs.send_message(
-                            QueueUrl=JSONL_SQS_URL,
+                            QueueUrl=OCR_JSONL_SQS_URL,
                             MessageBody=json.dumps({'s3_key': key})
                         )
                 logger.info(f"Successfully enqueued S3 key {key} to SQS. Message ID: {response['MessageId']}")

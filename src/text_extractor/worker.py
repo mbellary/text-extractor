@@ -10,8 +10,8 @@ from typing import Callable, Dict, List
 
 from text_extractor.config import (
     AWS_REGION, MAX_MESSAGES, WAIT_TIME_SECONDS, VISIBILITY_TIMEOUT,
-    VISIBILITY_EXTENSION_MARGIN, MAX_CONCURRENT_TASKS, MAX_RECEIVE_COUNT, PARQUET_SQS_URL, PARQUET_SQS_DLQ_URL,
-    JSONL_SQS_URL, JSONL_SQS_DLQ_URL, TEST_AWS_DDB_ACCESS_KEY_ID, TEST_AWS_DDB_SECRET_ACCESS_KEY_ID, OCR_S3_BUCKET,
+    VISIBILITY_EXTENSION_MARGIN, MAX_CONCURRENT_TASKS, MAX_RECEIVE_COUNT, PDF_OCR_PARQUET_SQS_URL, PDF_OCR_PARQUET_DLQ_URL,
+    OCR_JSONL_SQS_URL, OCR_JSONL_DLQ_URL, TEST_AWS_DDB_ACCESS_KEY_ID, TEST_AWS_DDB_SECRET_ACCESS_KEY_ID, OCR_S3_BUCKET,
     OCR_S3_JSONL_PART_KEY, TEST_AWS_SECRET_ACCESS_KEY_ID, TEST_AWS_ACCESS_KEY_ID, TEST_ENDPOINT_URL
 )
 from text_extractor.logger import get_logger
@@ -228,10 +228,10 @@ async def run():
 
     pollers = []
     # poll parquet_sqs_queue and publish failures to parquet_dqs_queue
-    pollers.append(asyncio.create_task(poller_task(PARQUET_SQS_URL, handle_parquet_message, PARQUET_SQS_DLQ_URL, session, writer_json)))
+    pollers.append(asyncio.create_task(poller_task(PDF_OCR_PARQUET_SQS_URL, handle_parquet_message, PDF_OCR_PARQUET_DLQ_URL, session, writer_json)))
 
     #poll json_sqs_queue and publish failures to json dqs
-    pollers.append(asyncio.create_task(poller_task(JSONL_SQS_URL, handle_jsonl_message, JSONL_SQS_DLQ_URL, session, writer_json)))
+    pollers.append(asyncio.create_task(poller_task(OCR_JSONL_SQS_URL, handle_jsonl_message, OCR_JSONL_DLQ_URL, session, writer_json)))
 
     # Wait until shutdown is requested
     await shutdown_event.wait()
