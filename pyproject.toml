@@ -28,3 +28,6 @@ worker = "text_extractor.worker:main"
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
+
+[tool.hatch.build]
+packages = ["src/text_extractor"]

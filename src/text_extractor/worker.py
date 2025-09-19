@@ -10,13 +10,14 @@ from typing import Callable, Dict, List
 
 from text_extractor.config import (
     AWS_REGION, MAX_MESSAGES, WAIT_TIME_SECONDS, VISIBILITY_TIMEOUT,
-    VISIBILITY_EXTENSION_MARGIN, MAX_CONCURRENT_TASKS, MAX_RECEIVE_COUNT, PDF_OCR_PARQUET_SQS_URL, PDF_OCR_PARQUET_DLQ_URL,
-    OCR_JSONL_SQS_URL, OCR_JSONL_DLQ_URL, TEST_AWS_DDB_ACCESS_KEY_ID, TEST_AWS_DDB_SECRET_ACCESS_KEY_ID, OCR_S3_BUCKET,
-    OCR_S3_JSONL_PART_KEY, TEST_AWS_SECRET_ACCESS_KEY_ID, TEST_AWS_ACCESS_KEY_ID, TEST_ENDPOINT_URL
+    VISIBILITY_EXTENSION_MARGIN, MAX_CONCURRENT_TASKS, MAX_RECEIVE_COUNT, PDF_OCR_PARQUET_SQS_QUEUE_NAME, PDF_OCR_PARQUET_DLQ_QUEUE_NAME,\
+OCR_JSONL_SQS_QUEUE_NAME, OCR_JSONL_DLQ_QUEUE_NAME, OCR_S3_BUCKET, OCR_S3_JSONL_PART_KEY
 )
 from text_extractor.logger import get_logger
 from text_extractor.metrics_server import start_metrics_server, MSG_PROCESSED, MSG_FAILED, MSG_RECEIVED, IN_FLIGHT, PROC_TIME
 from text_extractor.processor import handle_parquet_message, handle_jsonl_message, JSONLBatchWriter
+from text_extractor.aws_clients import get_aboto3_client, get_boto3_client
+#from text_extractor.utils import get_queue_url
 
 from tenacity import retry, stop_after_attempt, wait_exponential
 
@@ -132,13 +133,18 @@ async def process_single_message(sqs_client, queue_url: str, msg: dict, handler:
             pass
         IN_FLIGHT.dec()
 
-async def poller_task(queue_url: str, handler: Callable, dlq_url: str, session, writer_json):
+async def poller_task(queue_name: str, handler: Callable, dlq_name: str, writer_json):
     """
     Continuously polls a queue and submits processing coroutines to worker pool.
     """
-    logger.info("starting poller", extra={"queue_url": queue_url})
-    async with (session.client("sqs", region_name=AWS_REGION, aws_access_key_id=TEST_AWS_ACCESS_KEY_ID, aws_secret_access_key=TEST_AWS_SECRET_ACCESS_KEY_ID, endpoint_url=TEST_ENDPOINT_URL) as sqs_client,
-                session.client("dynamodb", region_name=AWS_REGION, aws_access_key_id=TEST_AWS_DDB_ACCESS_KEY_ID, aws_secret_access_key=TEST_AWS_DDB_SECRET_ACCESS_KEY_ID, endpoint_url=TEST_ENDPOINT_URL) as ddb_client):
+    logger.info("starting poller", extra={"queue_url": queue_name})
+    # async with (session.client("sqs", region_name=AWS_REGION, aws_access_key_id=TEST_AWS_ACCESS_KEY_ID, aws_secret_access_key=TEST_AWS_SECRET_ACCESS_KEY_ID, endpoint_url=TEST_ENDPOINT_URL) as sqs_client,
+    #             session.client("dynamodb", region_name=AWS_REGION, aws_access_key_id=TEST_AWS_DDB_ACCESS_KEY_ID, aws_secret_access_key=TEST_AWS_DDB_SECRET_ACCESS_KEY_ID, endpoint_url=TEST_ENDPOINT_URL) as ddb_client):
+    async with await get_aboto3_client("sqs") as  sqs_client, await get_aboto3_client("dynamodb") as ddb_client:
+        queue_response= await sqs_client.get_queue_url(QueueName=queue_name)
+        queue_url = queue_response['QueueUrl']
+        dlq_response = await sqs_client.get_queue_url(QueueName=dlq_name)
+        dlq_url = dlq_response['QueueUrl']
         while not shutdown_event.is_set():
             try:
                 resp = await sqs_client.receive_message(
@@ -219,7 +225,7 @@ async def run():
     logger.info("metrics server started", extra={"host": os.environ.get("METRICS_HOST"), "port": os.environ.get("METRICS_PORT")})
 
     # create aioboto3 session
-    session = aioboto3.Session()
+    #session = aioboto3.Session()
     loop = asyncio.get_running_loop()
     #_install_signal_handlers(loop)
 
@@ -228,10 +234,10 @@ async def run():
 
     pollers = []
     # poll parquet_sqs_queue and publish failures to parquet_dqs_queue
-    pollers.append(asyncio.create_task(poller_task(PDF_OCR_PARQUET_SQS_URL, handle_parquet_message, PDF_OCR_PARQUET_DLQ_URL, session, writer_json)))
+    pollers.append(asyncio.create_task(poller_task(PDF_OCR_PARQUET_SQS_QUEUE_NAME, handle_parquet_message, PDF_OCR_PARQUET_DLQ_QUEUE_NAME, writer_json)))
 
     #poll json_sqs_queue and publish failures to json dqs
-    pollers.append(asyncio.create_task(poller_task(OCR_JSONL_SQS_URL, handle_jsonl_message, OCR_JSONL_DLQ_URL, session, writer_json)))
+    pollers.append(asyncio.create_task(poller_task(OCR_JSONL_SQS_QUEUE_NAME, handle_jsonl_message, OCR_JSONL_DLQ_QUEUE_NAME, writer_json)))
 
     # Wait until shutdown is requested
     await shutdown_event.wait()

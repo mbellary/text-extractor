@@ -1,12 +1,13 @@
 import aioboto3
 from botocore.exceptions import ClientError
 
-from text_extractor.config import AWS_REGION, TEST_AWS_SECRET_ACCESS_KEY_ID, TEST_AWS_ACCESS_KEY_ID, TEST_ENDPOINT_URL
-
+from text_extractor.config import AWS_REGION
+from text_extractor.aws_clients import get_aboto3_client, get_boto3_client
 
 async def download_s3_to_file(s3_bucket_uri: str, s3_key: str, local_path: str):
-    sess = aioboto3.Session(region_name=AWS_REGION)
-    async with sess.client('s3', region_name=AWS_REGION, aws_access_key_id=TEST_AWS_ACCESS_KEY_ID, aws_secret_access_key=TEST_AWS_SECRET_ACCESS_KEY_ID, endpoint_url=TEST_ENDPOINT_URL) as s3:
+    #sess = aioboto3.Session(region_name=AWS_REGION)
+    #async with sess.client('s3', region_name=AWS_REGION, aws_access_key_id=TEST_AWS_ACCESS_KEY_ID, aws_secret_access_key=TEST_AWS_SECRET_ACCESS_KEY_ID, endpoint_url=TEST_ENDPOINT_URL) as s3:
+    async with await get_aboto3_client("s3") as s3:
         await s3.download_file(Bucket=s3_bucket_uri.replace("s3://","") if s3_bucket_uri.startswith("s3://") else s3_bucket_uri, Key=s3_key, Filename=local_path)
 
 
@@ -30,3 +31,6 @@ def check_if_file_enqueued(ddb_client, s3_key, table_name):
         print(f"Error checking item in DynamoDB: {e}")
         return False
 
+def get_queue_url(sqs_client, queue_name: str) -> str:
+    resp = sqs_client.get_queue_url(QueueName=queue_name)
+    return resp["QueueUrl"]

@@ -14,12 +14,12 @@ import pyarrow.parquet as pq
 import aioboto3
 
 from text_extractor.config import PROCESS_POOL_WORKERS, THREAD_POOL_WORKERS, PDF_S3_BUCKET, JSONL_MAX_CHUNK_SIZE_MB, \
-    JSONL_MAX_NUM_PAGES, OCR_S3_BUCKET, OCR_JSONL_SQS_URL, OCR_JSONL_STATE, OCR_PARQUET_STATE, AWS_REGION, \
-    TEST_AWS_DDB_ACCESS_KEY_ID, TEST_AWS_DDB_SECRET_ACCESS_KEY_ID, TEST_ENDPOINT_URL
+    JSONL_MAX_NUM_PAGES, OCR_S3_BUCKET, OCR_JSONL_SQS_QUEUE_NAME, OCR_JSONL_STATE_NAME, OCR_PARQUET_STATE_NAME
 from text_extractor.logger import get_logger
-# from text_extractor.worker import forward_to_dlq
 from text_extractor.ocr_client import mistral_ocr
 from text_extractor.utils import download_s3_to_file, check_if_file_enqueued
+from text_extractor.aws_clients import get_aboto3_client, get_boto3_client
+from text_extractor.utils import get_queue_url
 
 logger = get_logger("processors")
 
@@ -39,7 +39,7 @@ async def forward_to_dlq(sqs_client, dlq_url: str, body: str, attributes: dict):
     await sqs_client.send_message(QueueUrl=dlq_url, MessageBody=body, MessageAttributes=attributes or {})
 
 async def _get_dynamo_item(ddb, s3_key: str):
-    resp = await ddb.get_item(TableName=OCR_PARQUET_STATE,
+    resp = await ddb.get_item(TableName=OCR_PARQUET_STATE_NAME,
                               Key={"s3_key": {"S": s3_key}},
                               ConsistentRead=True)
     return resp.get("Item")
@@ -58,7 +58,7 @@ async def _init_or_mark_processing(ddb, s3_key: str):
     now = _now_iso()
     # Use update_item to create if not exists and set status to processing
     await ddb.update_item(
-        TableName=OCR_PARQUET_STATE,
+        TableName=OCR_PARQUET_STATE_NAME,
         Key={"s3_key": {"S": s3_key}},
         UpdateExpression="SET #st = :processing, #lu = :lu, attempts = if_not_exists(attempts, :zero_n), pages_processed = if_not_exists(pages_processed, :zero_n) ",
         ExpressionAttributeNames={"#st": "status", "#lu": "last_updated"},
@@ -69,7 +69,7 @@ async def _init_or_mark_processing(ddb, s3_key: str):
 async def _increment_pages_processed(ddb, s3_key: str, increment: int = 1):
     now = _now_iso()
     await ddb.update_item(
-        TableName=OCR_PARQUET_STATE,
+        TableName=OCR_PARQUET_STATE_NAME,
         Key={"s3_key": {"S": s3_key}},
         UpdateExpression="ADD pages_processed :inc SET last_updated = :lu",
         ExpressionAttributeValues={":inc": {"N": str(increment)}, ":lu": {"S": now}},
@@ -78,7 +78,7 @@ async def _increment_pages_processed(ddb, s3_key: str, increment: int = 1):
 async def _set_done(ddb, s3_key: str, total_pages: int):
     now = _now_iso()
     await ddb.update_item(
-        TableName=OCR_PARQUET_STATE,
+        TableName=OCR_PARQUET_STATE_NAME,
         Key={"s3_key": {"S": s3_key}},
         UpdateExpression="SET #st = :done, total_pages = :tp, last_updated = :lu",
         ExpressionAttributeNames={"#st": "status"},
@@ -88,7 +88,7 @@ async def _set_done(ddb, s3_key: str, total_pages: int):
 async def _set_enqeue(ddb, s3_key: str, total_pages: int):
     now = _now_iso()
     await ddb.update_item(
-        TableName=OCR_JSONL_STATE,
+        TableName=OCR_PARQUET_STATE_NAME,
         Key={"s3_key": {"S": s3_key}},
         UpdateExpression="SET #st = :enqeued, total_pages = :tp, last_updated = :lu",
         ExpressionAttributeNames={"#st": "status"},
@@ -99,7 +99,7 @@ async def _mark_failure(ddb, s3_key: str, err_msg: str = ""):
     now = _now_iso()
     # increment attempts and set status=failed
     await ddb.update_item(
-        TableName=OCR_PARQUET_STATE,
+        TableName=OCR_PARQUET_STATE_NAME,
         Key={"s3_key": {"S": s3_key}},
         UpdateExpression="ADD attempts :one SET #st = :failed, last_error = :err, last_updated = :lu",
         ExpressionAttributeNames={"#st": "status"},
@@ -109,18 +109,21 @@ async def _mark_failure(ddb, s3_key: str, err_msg: str = ""):
 
 class JSONLBatchWriter:
         def __init__(self, s3_bucket, output_prefix, max_chunk_size_mb=JSONL_MAX_CHUNK_SIZE_MB, max_num_pages=JSONL_MAX_NUM_PAGES):
-            self.s3 = boto3.client("s3", region_name = AWS_REGION,
-                                                    aws_access_key_id=TEST_AWS_DDB_ACCESS_KEY_ID,
-                                                    aws_secret_access_key=TEST_AWS_DDB_SECRET_ACCESS_KEY_ID,
-                                                    endpoint_url=TEST_ENDPOINT_URL)
-            self.sqs = boto3.client("sqs" , region_name = AWS_REGION,
-                                                    aws_access_key_id=TEST_AWS_DDB_ACCESS_KEY_ID,
-                                                    aws_secret_access_key=TEST_AWS_DDB_SECRET_ACCESS_KEY_ID,
-                                                    endpoint_url=TEST_ENDPOINT_URL)
-            self.ddb = boto3.client("dynamodb", region_name = AWS_REGION,
-                                                    aws_access_key_id=TEST_AWS_DDB_ACCESS_KEY_ID,
-                                                    aws_secret_access_key=TEST_AWS_DDB_SECRET_ACCESS_KEY_ID,
-                                                    endpoint_url=TEST_ENDPOINT_URL)
+            # self.s3 = boto3.client("s3", region_name = AWS_REGION,
+            #                                         aws_access_key_id=TEST_AWS_DDB_ACCESS_KEY_ID,
+            #                                         aws_secret_access_key=TEST_AWS_DDB_SECRET_ACCESS_KEY_ID,
+            #                                         endpoint_url=TEST_ENDPOINT_URL)
+            # self.sqs = boto3.client("sqs" , region_name = AWS_REGION,
+            #                                         aws_access_key_id=TEST_AWS_DDB_ACCESS_KEY_ID,
+            #                                         aws_secret_access_key=TEST_AWS_DDB_SECRET_ACCESS_KEY_ID,
+            #                                         endpoint_url=TEST_ENDPOINT_URL)
+            # self.ddb = boto3.client("dynamodb", region_name = AWS_REGION,
+            #                                         aws_access_key_id=TEST_AWS_DDB_ACCESS_KEY_ID,
+            #                                         aws_secret_access_key=TEST_AWS_DDB_SECRET_ACCESS_KEY_ID,
+            #                                         endpoint_url=TEST_ENDPOINT_URL)
+            self.s3 = get_boto3_client("s3")
+            self.sqs = get_boto3_client("sqs")
+            self.ddb = get_boto3_client("dynamodb")
             self.bucket = s3_bucket
             self.prefix = output_prefix
             self.max_chunk = max_chunk_size_mb * 1024 * 1024
@@ -180,10 +183,10 @@ class JSONLBatchWriter:
 
             # add item to dynamodb
             try:
-                response = check_if_file_enqueued(self.ddb, key, OCR_JSONL_STATE)
+                response = check_if_file_enqueued(self.ddb, key, OCR_JSONL_STATE_NAME)
                 if not response:
                     self.ddb.put_item(
-                        TableName=OCR_JSONL_STATE,
+                        TableName=OCR_JSONL_STATE_NAME,
                         Item={
                             's3_key': {'S': key},
                             'status': {"S": "enqueued"},
@@ -197,8 +200,10 @@ class JSONLBatchWriter:
 
             # publish to SQS
             try:
+                queue_response = self.sqs.get_queue_url(QueueName=OCR_JSONL_SQS_QUEUE_NAME)
+                queue_url = queue_response['QueueUrl']
                 response= self.sqs.send_message(
-                            QueueUrl=OCR_JSONL_SQS_URL,
+                            QueueUrl=queue_url,
                             MessageBody=json.dumps({'s3_key': key})
                         )
                 logger.info(f"Successfully enqueued S3 key {key} to SQS. Message ID: {response['MessageId']}")
@@ -226,8 +231,9 @@ async def process_parquet_file(s3_bucket_uri, s3_key, ddb_client, writer_json):
             # flush to S3 and SQS if file_size or num_row exceeds the threshold
     if ddb_client is None:
         logger.info("DDB client not provided. creating an DDB client")
-        session = aioboto3.Session()
-        ddb_client = await session.client("dynamodb").__aenter__()
+        #session = aioboto3.Session()
+        #ddb_client = await session.client("dynamodb").__aenter__()
+        ddb_client = await get_aboto3_client("dynamodb")
 
     # First, check DynamoDB: if status == done, skip
     try:

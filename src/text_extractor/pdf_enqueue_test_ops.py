@@ -6,13 +6,11 @@ from botocore.exceptions import ClientError
 from config import (
     PDF_S3_BUCKET,
     AWS_REGION,
-    OCR_PARQUET_STATE,
-    PARQUET_SQS_URL,
-    TEST_AWS_ACCESS_KEY_ID,
-    TEST_AWS_SECRET_ACCESS_KEY_ID,
-    TEST_AWS_DDB_ACCESS_KEY_ID,
-    TEST_AWS_DDB_SECRET_ACCESS_KEY_ID,
-    TEST_ENDPOINT_URL)
+    OCR_PARQUET_STATE_NAME,
+    PDF_OCR_PARQUET_SQS_QUEUE_NAME,
+    AWS_ACCESS_KEY_ID,
+    AWS_SECRET_ACCESS_KEY,
+    LOCALSTACK_URL)
 
 '''
 This script simulates the pdf_processor modules "processor" function.
@@ -26,9 +24,9 @@ This script simulates the pdf_processor modules "processor" function.
 S3_ENDPOINT = "http://localhost:4566"
 
 LOCAL_FILES = [
-    ('C:\\Users\\bmoha\\Work\\projects\\AWS\\text-extractor\\data\\invoice_1.parquet', "parquet/invoice_1.parquet"),
+    ('C:\\Users\\bmoha\\Work\\projects\\AWS\\text-extractor\\data\\invoice_1.parquet', "parquets/invoice_1.parquet"),
     ('C:\\Users\\bmoha\\Work\\projects\\AWS\\text-extractor\\data\\oracle_10k_2014_q1_small.parquet',
-     "parquet/oracle_10k_2014_q1_small.parquet")]
+     "parquets/oracle_10k_2014_q1_small.parquet")]
 
 
 
@@ -38,7 +36,7 @@ def check_if_file_enqueued(ddb_client, s3_key):
     """
     try:
         response = ddb_client.get_item(
-            TableName=OCR_PARQUET_STATE,
+            TableName=OCR_PARQUET_STATE_NAME,
             Key={'s3_key': {'S': s3_key}}
         )
         item = response.get('Item')
@@ -55,21 +53,21 @@ def check_if_file_enqueued(ddb_client, s3_key):
 def main():
     s3_client = boto3.client("s3",
         region_name = AWS_REGION,
-        aws_access_key_id=TEST_AWS_ACCESS_KEY_ID,
-        aws_secret_access_key=TEST_AWS_SECRET_ACCESS_KEY_ID,
-        endpoint_url=TEST_ENDPOINT_URL)
+        aws_access_key_id=AWS_ACCESS_KEY_ID,
+        aws_secret_access_key=AWS_SECRET_ACCESS_KEY,
+        endpoint_url=LOCALSTACK_URL)
 
     ddb_client = boto3.client("dynamodb",
         region_name = AWS_REGION,
-        aws_access_key_id=TEST_AWS_DDB_ACCESS_KEY_ID,
-        aws_secret_access_key=TEST_AWS_DDB_SECRET_ACCESS_KEY_ID,
-        endpoint_url=TEST_ENDPOINT_URL)
+        aws_access_key_id=AWS_ACCESS_KEY_ID,
+        aws_secret_access_key=AWS_SECRET_ACCESS_KEY,
+        endpoint_url=LOCALSTACK_URL)
 
     sqs_client = boto3.client("sqs",
         region_name = AWS_REGION,
-        aws_access_key_id=TEST_AWS_DDB_ACCESS_KEY_ID,
-        aws_secret_access_key=TEST_AWS_DDB_SECRET_ACCESS_KEY_ID,
-        endpoint_url=TEST_ENDPOINT_URL)
+        aws_access_key_id=AWS_ACCESS_KEY_ID,
+        aws_secret_access_key=AWS_SECRET_ACCESS_KEY,
+        endpoint_url=LOCALSTACK_URL)
 
     s3_bucket = PDF_S3_BUCKET
     for local_file, key in LOCAL_FILES:
@@ -85,7 +83,7 @@ def main():
             response = check_if_file_enqueued(ddb_client, s3_key)
             if not response:
                 ddb_client.put_item(
-                    TableName=OCR_PARQUET_STATE,
+                    TableName=OCR_PARQUET_STATE_NAME,
                     Item={
                         's3_key': {'S': s3_key},
                         'status': {"S" : "enqueued"},
@@ -98,8 +96,10 @@ def main():
             print(f'Failed to update key {s3_key} to dynamo db: {ddb_e}')
 
         try:
+            queue_response = sqs_client.get_queue_url(QueueName=PDF_OCR_PARQUET_SQS_QUEUE_NAME)
+            queue_url = queue_response['QueueUrl']
             response = sqs_client.send_message(
-                QueueUrl=PARQUET_SQS_URL,
+                QueueUrl=queue_url,
                 MessageBody=json.dumps({'s3_key': s3_key})
             )
             print(f"Successfully enqueued S3 key {s3_key} to SQS. Message ID: {response['MessageId']}")
