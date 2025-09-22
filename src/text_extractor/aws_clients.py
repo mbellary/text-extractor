@@ -61,12 +61,12 @@ def get_boto3_client(service):
         aws_profile = os.getenv("AWS_PROFILE")
         if aws_profile:
             logger.info(f"Initializing client {service} in production using AWS_PROFILE {aws_profile}")
-            session = boto3.Session(profile_name=aws_profile)
+            session = boto3.Session(region_name=AWS_REGION, profile_name=aws_profile)
             return session.client(service)
         else:
             # No profile → IAM Role will be used (via metadata service)
             logger.info(f"Initializing client {service} in production using IAM Role")
-            return boto3.client(service)
+            return boto3.client(service, region_name=AWS_REGION)
 
 async def get_aboto3_client(service):
     if APP_ENV == "localstack":
@@ -94,4 +94,4 @@ async def get_aboto3_client(service):
         else:
             # No profile → IAM Role will be used (via metadata service)
             logger.info(f"Initializing client {service} in production using IAM Role")
-            return _session.client(service)
+            return _session.client(service, region_name=AWS_REGION)
