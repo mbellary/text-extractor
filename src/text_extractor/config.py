@@ -56,6 +56,8 @@ PDF_OCR_PARQUET_SQS_QUEUE_NAME = _env("PDF_OCR_PARQUET_SQS_QUEUE_NAME", "parquet
 PDF_OCR_PARQUET_DLQ_QUEUE_NAME = _env("PDF_OCR_PARQUET_DLQ_QUEUE_NAME", "parquet-dlq")
 OCR_JSONL_SQS_QUEUE_NAME = _env("OCR_JSONL_SQS_QUEUE_NAME", "jsonl-queue")
 OCR_JSONL_DLQ_QUEUE_NAME = _env("OCR_JSONL_DLQ_QUEUE_NAME", "jsonl-dlq")
+OCR_OUTPUT_JSONL_SQS_QUEUE_NAME= _env("OCR_OUTPUT_JSONL_SQS_QUEUE_NAME", "ocr-jsonl-queue")  #output of OCR provider is published here
+OCR_OUTPUT_JSONL_DLQ_QUEUE_NAME= _env("OCR_OUTPUT_JSONL_DLQ_QUEUE_NAME", "ocr-jsonl-dlq")
 
 # Dynamo DB table
 PDF_FILE_STATE_NAME = _env("PDF_FILE_STATE_NAME", "pdf-processing-state")
@@ -69,6 +71,8 @@ OCR_JSONL_STATE_NAME = _env("OCR_JSONL_STATE_NAME", "ocr_jsonl_state")
 # tracks status of pages processed by OCR service provider
 OCR_PAGE_STATE_NAME = _env("OCR_PAGE_STATE_NAME", "ocr_page_state")
 
+# tracks status of pages processed by embedding service provider
+EMBEDDER_PAGE_STATE_NAME = _env("EMBEDDER_PAGE_STATE_NAME", "embedder_page_state")
 
 # Worker tuning
 MAX_MESSAGES = int(_env("MAX_MESSAGES", "10"))
@@ -94,3 +98,8 @@ THREAD_POOL_WORKERS = int(_env("THREAD_POOL_WORKERS", "32"))
 #OCR JSON Batch settings
 JSONL_MAX_CHUNK_SIZE_MB = int(_env("JSONL_MAX_CHUNK_SIZE_MB", "40"))
 JSONL_MAX_NUM_PAGES = int(_env("JSONL_MAX_NUM_PAGES", "950"))
+
+# GCP
+GCP_REGION=_env("GCP_REGION" , "us-central1")
+GCP_PROJECT=_env("GCP_PROJECT", "mistral-ocr-gcp")
+GCP_OCR_MODEL=_env("GCP_OCR_MODEL", "mistral-ocr-2505")

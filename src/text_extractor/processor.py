@@ -14,9 +14,10 @@ import pyarrow.parquet as pq
 import aioboto3
 
 from text_extractor.config import PROCESS_POOL_WORKERS, THREAD_POOL_WORKERS, PDF_S3_BUCKET, JSONL_MAX_CHUNK_SIZE_MB, \
-    JSONL_MAX_NUM_PAGES, OCR_S3_BUCKET, OCR_JSONL_SQS_QUEUE_NAME, OCR_JSONL_STATE_NAME, OCR_PARQUET_STATE_NAME
+    JSONL_MAX_NUM_PAGES, OCR_S3_BUCKET, OCR_JSONL_SQS_QUEUE_NAME, OCR_JSONL_STATE_NAME, OCR_PARQUET_STATE_NAME, \
+OCR_OUTPUT_JSONL_SQS_QUEUE_NAME, EMBEDDER_PAGE_STATE_NAME,
 from text_extractor.logger import get_logger
-from text_extractor.ocr_client import mistral_ocr
+from text_extractor.ocr_client import gcp_mistral_ocr_client
 from text_extractor.utils import download_s3_to_file, check_if_file_enqueued
 from text_extractor.aws_clients import get_aboto3_client, get_boto3_client
 from text_extractor.utils import get_queue_url
@@ -331,26 +332,50 @@ async def process_jsonl_file(s3_bucket_uri, s3_key, s3_client, sqs_client, ddb_c
             await download_s3_to_file(s3_bucket_uri, s3_key, tmp_jsonl.name)
 
             # send file to OCR provider
-            response_succeeded, response_failed = await mistral_ocr(tmp_jsonl.name)
+            ocr_pages = await gcp_mistral_ocr_client(tmp_jsonl.name)
+            logger.info(f"Successfully performed OCR for {s3_key}")
 
-            if response_succeeded:
-                # add it to S3 and publish to downstream SQS
-                key = f'{s3_key.split("/")[1].split(".")[0]}_output.jsonl'
+            key = f'{s3_key.split("/")[1].split(".")[0]}_ocr_pages.jsonl'
+
+            # upload content to S3
+            try:
                 buf = io.BytesIO()
-                buf.write(response_succeeded)
+                buf.write(ocr_pages)
                 buf.seek(0)
                 s3_client.upload_fileobj(buf, s3_bucket_uri, key)
-            
-            if response_failed:
-                # publish to DLQ
-                failed_keys = json.loads(response_failed)
-                payload = {
-                    "failed_pages": failed_keys,
-                    "reason": "ocr_processing_failed"
-                }
-                body = json.dumps(payload)
-                await forward_to_dlq(sqs_client, dlq_url, body)
-                print(f"[dlq] published {len(failed_keys)} failed keys → DLQ")
+                logger.info(f"Successfully uploaded OCR file to bucket {s3_bucket_uri}")
+            except Exception as s3_error:
+                logger.info(f"Failed to upload OCR file to bucket {s3_bucket_uri} - {s3_error}")
+
+            # publish to SQS
+            try:
+                queue_response = sqs_client.get_queue_url(QueueName=OCR_OUTPUT_JSONL_SQS_QUEUE_NAME)
+                queue_url = queue_response['QueueUrl']
+                response= sqs_client.send_message(
+                            QueueUrl=queue_url,
+                            MessageBody=json.dumps({'s3_key': key})
+                        )
+                logger.info(f"Successfully enqueued S3 key {key} to SQS. Message ID: {response['MessageId']}")
+            except Exception as sqs_e:
+                logger.warning(f"Error sending message to SQS for {key}: {sqs_e}")
+
+            # add item to dynamodb
+            try:
+                response = check_if_file_enqueued(ddb_client, key, EMBEDDER_PAGE_STATE_NAME)
+                if not response:
+                    ddb_client.put_item(
+                        TableName=EMBEDDER_PAGE_STATE_NAME,
+                        Item={
+                            's3_key': {'S': key},
+                            'status': {"S": "enqueued"},
+                            'timestamp': {'N': str(int(time.time()))}
+                        },
+                        ConditionExpression="attribute_not_exists(s3_key)"
+                    )
+                logger.info(f'Successfully updated key {key} to dynamo db.')
+            except Exception as ddb_e:
+                logger.warning(f'Failed to update key {key} to dynamo db: {ddb_e}')
+
         finally:
             try:
                 os.unlink(tmp_jsonl.name)
@@ -362,6 +387,18 @@ async def process_jsonl_file(s3_bucket_uri, s3_key, s3_client, sqs_client, ddb_c
             await _mark_failure(ddb_client, s3_key, str(e))
         except Exception as ex:
             logger.exception("Also failed to mark failure in DynamoDB: %s", ex)
+
+        try:
+            payload = {
+                "failed_pages": s3_key,
+                "reason": "ocr_processing_failed"
+            }
+            body = json.dumps(payload)
+            await forward_to_dlq(sqs_client, dlq_url, body, {})
+            logger.info(f"[dlq] published {s3_key} failed keys → DLQ")
+        except Exception as dlq_ex:
+            logger.exception("Also failed to eqnueue to DLQ: %s", dlq_ex)
+
         raise
 
 async def handle_parquet_message(body: str, message_meta: dict, sqs_client, ddb_client, dlq_url, writer_json):
