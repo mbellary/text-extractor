@@ -43,6 +43,7 @@ PDF_S3_BUCKET=_env("PDF_S3_BUCKET", "rag-pdf-s3-bucket")
 PDF_S3_PARQUET_PART_KEY=_env("PDF_S3_PARQUET_PART_KEY", "parquet")
 OCR_S3_BUCKET=_env("OCR_S3_BUCKET", "rag-ocr-s3-bucket")
 OCR_S3_JSONL_PART_KEY=_env("OCR_S3_JSONL_PART_KEY", "jsonl")
+OCR_S3_PAGES_PART_KEY=_env("OCR_S3_PAGES_PART_KEY", "ocr")
 
 # SQS URLs
 # PDF_OCR_PARQUET_SQS_URL = _env("PDF_OCR_PARQUET_SQS_URL")  # parquet messages

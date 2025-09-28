@@ -15,7 +15,7 @@ import aioboto3
 
 from text_extractor.config import PROCESS_POOL_WORKERS, THREAD_POOL_WORKERS, PDF_S3_BUCKET, JSONL_MAX_CHUNK_SIZE_MB, \
     JSONL_MAX_NUM_PAGES, OCR_S3_BUCKET, OCR_JSONL_SQS_QUEUE_NAME, OCR_JSONL_STATE_NAME, OCR_PARQUET_STATE_NAME, \
-OCR_OUTPUT_JSONL_SQS_QUEUE_NAME, EMBEDDER_PAGE_STATE_NAME,
+OCR_OUTPUT_JSONL_SQS_QUEUE_NAME, EMBEDDER_PAGE_STATE_NAME,OCR_PAGE_STATE_NAME, OCR_S3_PAGES_PART_KEY
 from text_extractor.logger import get_logger
 from text_extractor.ocr_client import gcp_mistral_ocr_client
 from text_extractor.utils import download_s3_to_file, check_if_file_enqueued
@@ -335,12 +335,13 @@ async def process_jsonl_file(s3_bucket_uri, s3_key, s3_client, sqs_client, ddb_c
             ocr_pages = await gcp_mistral_ocr_client(tmp_jsonl.name)
             logger.info(f"Successfully performed OCR for {s3_key}")
 
-            key = f'{s3_key.split("/")[1].split(".")[0]}_ocr_pages.jsonl'
+            key = f'{OCR_S3_PAGES_PART_KEY}/{s3_key.split("/")[1].split(".")[0]}_ocr_pages.jsonl'
 
             # upload content to S3
             try:
+                ocr_pages_bytes = json.dumps(ocr_pages).encode('utf-8')
                 buf = io.BytesIO()
-                buf.write(ocr_pages)
+                buf.write(ocr_pages_bytes)
                 buf.seek(0)
                 s3_client.upload_fileobj(buf, s3_bucket_uri, key)
                 logger.info(f"Successfully uploaded OCR file to bucket {s3_bucket_uri}")
@@ -349,9 +350,9 @@ async def process_jsonl_file(s3_bucket_uri, s3_key, s3_client, sqs_client, ddb_c
 
             # publish to SQS
             try:
-                queue_response = sqs_client.get_queue_url(QueueName=OCR_OUTPUT_JSONL_SQS_QUEUE_NAME)
+                queue_response = await sqs_client.get_queue_url(QueueName=OCR_OUTPUT_JSONL_SQS_QUEUE_NAME)
                 queue_url = queue_response['QueueUrl']
-                response= sqs_client.send_message(
+                response= await sqs_client.send_message(
                             QueueUrl=queue_url,
                             MessageBody=json.dumps({'s3_key': key})
                         )
@@ -360,11 +361,12 @@ async def process_jsonl_file(s3_bucket_uri, s3_key, s3_client, sqs_client, ddb_c
                 logger.warning(f"Error sending message to SQS for {key}: {sqs_e}")
 
             # add item to dynamodb
+            ddb_client = get_boto3_client("dynamodb")
             try:
-                response = check_if_file_enqueued(ddb_client, key, EMBEDDER_PAGE_STATE_NAME)
+                response = check_if_file_enqueued(ddb_client, key, OCR_PAGE_STATE_NAME)
                 if not response:
                     ddb_client.put_item(
-                        TableName=EMBEDDER_PAGE_STATE_NAME,
+                        TableName=OCR_PAGE_STATE_NAME,
                         Item={
                             's3_key': {'S': key},
                             'status': {"S": "enqueued"},
@@ -454,10 +456,11 @@ async def handle_jsonl_message(body: str, message_meta: dict, sqs_client, ddb_cl
     # s3_key value defines the parquet location on s3.
     s3_key = payload.get("s3_keys") or payload.get("s3_key") or payload.get("key") or payload.get("s3Uri") or payload.get("s3_uri") or body
     s3_bucket_uri = OCR_S3_BUCKET
-
+    s3_client = get_boto3_client("s3")
     failed_keys = []
     try:
-        result = await process_jsonl_file(s3_bucket_uri, s3_key,  None, sqs_client, ddb_client, dlq_url, writer_json)
+        logger.info(f'handling jsonl message - bucket - {s3_bucket_uri}, s3_key - {s3_key}')
+        result = await process_jsonl_file(s3_bucket_uri, s3_key,  s3_client, sqs_client, ddb_client, dlq_url, writer_json)
     except Exception as e:
         logger.exception("Processing failed for %s: %s", s3_key, e)
         failed_keys.append(s3_key)
@@ -469,7 +472,7 @@ async def handle_jsonl_message(body: str, message_meta: dict, sqs_client, ddb_cl
             "reason": "worker_processing_failed"
         }
         body = json.dumps(payload)
-        await forward_to_dlq(sqs_client, dlq_url, body)
+        await forward_to_dlq(sqs_client, dlq_url, body, {})
         print(f"[dlq] published {len(failed_keys)} failed keys → DLQ")
     else:
         # message deletion is handled by the worker

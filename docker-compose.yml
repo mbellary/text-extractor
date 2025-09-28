@@ -1,0 +1,45 @@
+version: "3.8"
+
+services:
+  localstack:
+    image: localstack/localstack:latest
+    container_name: localstack_main
+    ports:
+      - "4566:4566"
+      - "4510-4559:4510-4559"
+    environment:
+      - SERVICES=s3,sqs,dynamodb,cloudwatch
+      - DEBUG=1
+      - DATA_DIR=/tmp/localstack/data
+      - PERSISTENCE=1
+      - HOSTNAME_EXTERNAL=localstack
+    volumes:
+      - "./localstack_data:/var/lib/localstack"
+      - "/var/run/docker.sock:/var/run/docker.sock"
+
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: prometheus
+    ports:
+      - "9090:9090"
+    volumes:
+      - "./prometheus.yml:/etc/prometheus/prometheus.yml"
+
+#  grafana:
+#    image: grafana/grafana:latest
+#    container_name: grafana
+#    ports:
+#      - "3000:3000"
+#    environment:
+#      - GF_SECURITY_ADMIN_USER=admin
+#      - GF_SECURITY_ADMIN_PASSWORD=admin
+#    volumes:
+#      - "./grafana_data:/var/lib/grafana"
+
+#  app:
+#    image: 226403923581.dkr.ecr.ap-south-1.amazonaws.com/file-loader
+#    depends_on:
+#      - localstack
+#    environment:
+#      - AWS_ENDPOINT_URL=http://localstack:4566 # Point to LocalStack service name and port
+#      - AWS_DEFAULT_REGION=ap-south-1 # Match LocalStack region

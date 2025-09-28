@@ -143,6 +143,18 @@ wheels = [
 ]
 
 [[package]]
+name = "awscli-local"
+version = "0.22.2"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "localstack-client" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/7a/71/591a30da6819c96deca2286f145d5982e73b11e7f657e8cbfc5e003ca73f/awscli_local-0.22.2.tar.gz", hash = "sha256:07c532c372753bf5f15426451dc91d6eec9de8779748049329a9a882bdac8a0b", size = 11695, upload-time = "2025-08-07T06:07:49.133Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/13/80/6cb86812f8418b0464fc3418e78826d8fc99342848fdb82e7f576add1c1f/awscli_local-0.22.2-py3-none-any.whl", hash = "sha256:1901ebef343ba8cbde06f9f6406b5415ef53e93296718c2c31c9d49b0b09bd9d", size = 12280, upload-time = "2025-08-07T06:07:47.624Z" },
+]
+
+[[package]]
 name = "boto3"
 version = "1.39.11"
 source = { registry = "https://pypi.org/simple" }
@@ -433,6 +445,15 @@ sdist = { url = "https://files.pythonhosted.org/packages/00/2a/e867e8531cf3e36b4
 wheels = [
     { url = "https://files.pythonhosted.org/packages/31/b4/b9b800c45527aadd64d5b442f9b932b00648617eb5d63d2c7a6587b7cafc/jmespath-1.0.1-py3-none-any.whl", hash = "sha256:02e2e4cc71b5bcab88332eebf907519190dd9e6e82107fa7f83b1003a6252980", size = 20256, upload-time = "2022-06-17T18:00:10.251Z" },
 ]
+
+[[package]]
+name = "localstack-client"
+version = "2.10"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "boto3" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/22/11/4f10b87d634edd616d8063dd0ed1193be747e524e28801f826d72828b98f/localstack_client-2.10.tar.gz", hash = "sha256:732a07e23fffd6a581af2714bbe006ad6f884ac4f8ac955211a8a63321cdc409", size = 11302, upload-time = "2025-04-02T12:10:57.554Z" }
 
 [[package]]
 name = "mistralai"
@@ -867,6 +888,7 @@ source = { editable = "." }
 dependencies = [
     { name = "aioboto3" },
     { name = "aiofiles" },
+    { name = "awscli-local" },
     { name = "boto3" },
     { name = "botocore" },
     { name = "google-cloud-storage" },
@@ -885,6 +907,7 @@ dependencies = [
 requires-dist = [
     { name = "aioboto3", specifier = ">=15.1.0" },
     { name = "aiofiles", specifier = ">=24.1.0" },
+    { name = "awscli-local", specifier = ">=0.22.2" },
     { name = "boto3", specifier = ">=1.39.11" },
     { name = "botocore", specifier = ">=1.39.11" },
     { name = "google-cloud-storage", specifier = ">=3.4.0" },
