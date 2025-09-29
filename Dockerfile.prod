@@ -24,4 +24,7 @@ WORKDIR /text-extractor
 # Copy installed site-packages from builder to keep runtime clean
 COPY --from=builder /usr/local /usr/local
 
+# GCP secrets
+RUN mkdir -p /app/secrets
+
 ENTRYPOINT ["worker"]

@@ -31,5 +31,8 @@ COPY src ./src
 # Install the package itself (creates "worker" CLI script)
 RUN uv pip install --system --editable .
 
+# GCP secrets
+RUN mkdir -p /app/secrets
+
 # Default entrypoint defined in pyproject.toml: [project.scripts]
 ENTRYPOINT ["worker"]
