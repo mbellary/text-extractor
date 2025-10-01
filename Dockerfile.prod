@@ -24,7 +24,11 @@ WORKDIR /text-extractor
 # Copy installed site-packages from builder to keep runtime clean
 COPY --from=builder /usr/local /usr/local
 
-# GCP secrets
-RUN mkdir -p /app/secrets
+# Ensure a shell & set a default path for the credentials
+ENV GOOGLE_APPLICATION_CREDENTIALS=/app/secrets/gcp-key.json
 
-ENTRYPOINT ["worker"]
+# Copy and use the entrypoint
+COPY entrypoint.sh /app/entrypoint.sh
+RUN chmod +x /app/entrypoint.sh
+
+ENTRYPOINT ["/app/entrypoint.sh"]
