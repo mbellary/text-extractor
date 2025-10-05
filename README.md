@@ -1,5 +1,8 @@
 # text-extractor
 
+[![Powered by ChatGPT](https://img.shields.io/badge/Powered%20by-ChatGPT-10a37f?style=for-the-badge&logo=openai&logoColor=white)](https://openai.com/chatgpt)
+
+
 The **text-extractor** is a pivotal component in the *Unstruct AI Modular Data Pipeline*, responsible for converting raw extracted text (from PDFs, DOCX, OCR output, etc.) into cleaned, tokenized, and enriched text suitable for embedding and semantic search.
 
 This repository is designed for modular, containerized deployment, includes **AWS service integrations (S3, SQS, DynamoDB)**, and comes with **observability** via Prometheus + Grafana support.
@@ -231,4 +234,10 @@ Licensed under the [Apache License 2.0](./LICENSE).
 
 ---
 
+### 🤖 Powered by [ChatGPT](https://openai.com/chatgpt)
+_This project was documented and scaffolded with assistance from OpenAI’s ChatGPT._
+
+---
+
 > _Part of the **Unstruct Modular Data Pipeline** — connecting ingestion, processing, extraction, embedding, and search._
+
