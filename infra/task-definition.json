@@ -1,0 +1,28 @@
+{
+  "family": "worker-extractor-task",
+  "networkMode": "awsvpc",
+  "requiresCompatibilities": ["FARGATE"],
+  "cpu": "512",
+  "memory": "2048",
+  "executionRoleArn": "arn:aws:iam::226403923581:role/unstruct_ecsTaskExecutionRole",
+  "taskRoleArn": "arn:aws:iam::226403923581:role/ecsTaskRole-workers",
+  "containerDefinitions": [
+    {
+      "name": "worker-text-extractor",
+      "image": "public.ecr.aws/amazonlinux/amazonlinux:latest",
+      "essential": true,
+      "portMappings": [{ "containerPort": 80, "protocol": "tcp" }],
+      "logConfiguration": {
+        "logDriver": "awslogs",
+        "options": {
+          "awslogs-group": "/ecs/worker-extractor-task",
+          "awslogs-region": "ap-south-1",
+          "awslogs-stream-prefix": "worker-text-extractor"
+        }
+      },
+      "environment": [
+        { "name": "ENV", "value": "production" }
+      ]
+    }
+  ]
+}
