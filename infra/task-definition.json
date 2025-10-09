@@ -8,16 +8,16 @@
   "taskRoleArn": "arn:aws:iam::226403923581:role/ecsTaskRole-workers",
   "containerDefinitions": [
     {
-      "name": "worker-text-extractor",
+      "name": "worker-extractor-container",
       "image": "public.ecr.aws/amazonlinux/amazonlinux:latest",
       "essential": true,
       "portMappings": [{ "containerPort": 80, "protocol": "tcp" }],
       "logConfiguration": {
         "logDriver": "awslogs",
         "options": {
-          "awslogs-group": "/ecs/worker-extractor-task",
+          "awslogs-group": "/ecs/worker-extractor-logs",
           "awslogs-region": "ap-south-1",
-          "awslogs-stream-prefix": "worker-text-extractor"
+          "awslogs-stream-prefix": "worker-extractor-logs"
         }
       },
       "environment": [
