@@ -21,7 +21,17 @@
         }
       },
       "environment": [
-        { "name": "ENV", "value": "production" }
+        { "name": "ENV", "value": "production" },
+         {
+          "name": "GOOGLE_APPLICATION_CREDENTIALS",
+          "value": "/app/secrets/gcp-key.json"
+        }
+      ],
+      "secrets": [
+        {
+          "name": "GOOGLE_APPLICATION_CREDENTIALS_JSON",
+          "valueFrom": "arn:aws:secretsmanager:ap-south-1:226403923581:secret:gcp/vertex-ocr-service-provider-3-cL9cx0"
+        }
       ]
     }
   ]
